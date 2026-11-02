@@ -1,4 +1,4 @@
-# dsh-notify
+# dsh-finish-notify
 
 DeepSeek Harness 的**完成提醒**插件：请求跑完时，在屏幕角落滑出一个白色小卡片，点一下回到 DSH。
 
@@ -19,7 +19,7 @@ DeepSeek Harness 的**完成提醒**插件：请求跑完时，在屏幕角落�
 **方式一：命令行**
 
 ```bash
-dsh plugin --profile desktop add dsh-notify
+dsh plugin --profile desktop add dsh-finish-notify
 ```
 
 **方式二：插件市场**
