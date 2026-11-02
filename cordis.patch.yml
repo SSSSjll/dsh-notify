@@ -1,0 +1,4 @@
+# dsh-notify 插件层：随 DSH 加载，负责右下角完成提醒框
+- insert:
+    - id: dsh-notify
+      name: 'dsh-notify'
