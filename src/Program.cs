@@ -40,6 +40,21 @@ namespace DshNotify
             if (U.S < 1f) U.S = 1f;
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            bool testMode = false;
+            foreach (string a in Environment.GetCommandLineArgs())
+            {
+                if (a == "--test") testMode = true;
+            }
+            if (testMode)
+            {
+                var t = new Toast();
+                t.ForceTest = true;
+                t.ShowToast();
+                Application.Run(t);
+                return;
+            }
+
             using (var ctx = new Ctx())
             {
                 ctx.Start();
@@ -215,6 +230,7 @@ namespace DshNotify
     {
         Label title, sub;
         Bitmap pic;
+        public bool ForceTest;
         Panel close;
         System.Windows.Forms.Timer fade, anim;
         int animFrom, animTo, animT, animDur; bool animOut; int fgTick;
@@ -284,7 +300,7 @@ namespace DshNotify
                 if (p2 >= 1f)
                 {
                     anim.Stop();
-                    if (animOut) Hide();
+                    if (animOut) { Hide(); if (ForceTest) Application.Exit(); }
                 }
             };
 
@@ -298,7 +314,7 @@ namespace DshNotify
                 if (fgTick >= 500)
                 {
                     fgTick = 0;
-                    if (!animOut && Program.DshForeground()) HideToast();
+                    if (!animOut && !ForceTest && Program.DshForeground()) HideToast();
                 }
             };
         }
@@ -333,7 +349,7 @@ namespace DshNotify
 
         public void ShowToast()
         {
-            if (Program.DshForeground()) return;
+            if (!ForceTest && Program.DshForeground()) return;
             var wa = Screen.PrimaryScreen.WorkingArea;
             ClientSize = new Size(U.D(Cfg.W), U.D(Cfg.H));
             Cfg.Load();
