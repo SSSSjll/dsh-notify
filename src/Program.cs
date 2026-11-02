@@ -48,10 +48,20 @@ namespace DshNotify
             }
             if (testMode)
             {
+                Cfg.MarkTest();
+                var tctx = new ApplicationContext();
                 var t = new Toast();
                 t.ForceTest = true;
-                t.ShowToast();
-                Application.Run(t);
+                var once = new System.Windows.Forms.Timer();
+                once.Interval = 80;
+                once.Tick += delegate
+                {
+                    once.Stop();
+                    once.Dispose();
+                    t.ShowToast();
+                };
+                once.Start();
+                Application.Run(tctx);
                 return;
             }
 
@@ -178,6 +188,23 @@ namespace DshNotify
         public static string DirPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "dsh-notify");
         public static string FilePath = System.IO.Path.Combine(DirPath, "config.ini");
 
+        public static string StampPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-notify.teststamp");
+
+        public static void MarkTest()
+        {
+            try { System.IO.File.WriteAllText(StampPath, DateTime.Now.Ticks.ToString()); } catch { }
+        }
+
+        public static bool TestFresh()
+        {
+            try
+            {
+                if (!System.IO.File.Exists(StampPath)) return false;
+                return (DateTime.Now - System.IO.File.GetLastWriteTime(StampPath)).TotalSeconds < 10;
+            }
+            catch { return false; }
+        }
+
         public static void EnsureFile()
         {
             try
@@ -239,6 +266,8 @@ namespace DshNotify
         public Toast()
         {
             FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.Manual;
+            ShowInTaskbar = false;
             ShowInTaskbar = false;
             TopMost = true;
             BackColor = Color.White;
@@ -314,7 +343,7 @@ namespace DshNotify
                 if (fgTick >= 500)
                 {
                     fgTick = 0;
-                    if (!animOut && !ForceTest && Program.DshForeground()) HideToast();
+                    if (!animOut && !ForceTest && (Program.DshForeground() || Cfg.TestFresh())) HideToast();
                 }
             };
         }
@@ -349,7 +378,7 @@ namespace DshNotify
 
         public void ShowToast()
         {
-            if (!ForceTest && Program.DshForeground()) return;
+            if (!ForceTest && (Program.DshForeground() || Cfg.TestFresh())) return;
             var wa = Screen.PrimaryScreen.WorkingArea;
             ClientSize = new Size(U.D(Cfg.W), U.D(Cfg.H));
             Cfg.Load();
@@ -402,6 +431,14 @@ namespace DshNotify
             life = 0;
             fgTick = 0;
             TopMost = true;
+            try
+            {
+                string lg = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-notify.log");
+                System.IO.File.AppendAllText(lg, string.Format(
+                    "{0:HH:mm:ss} test={1} U={2} wa={3} wh={4}x{5} loc={6} cfg pos={7} mx={8} my={9}\r\n",
+                    DateTime.Now, ForceTest, U.S, wa, Width, Height, tx + "," + ty, Cfg.Pos, Cfg.MX, Cfg.MY));
+            }
+            catch { }
             fade.Start();
         }
 
