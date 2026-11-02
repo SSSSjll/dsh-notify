@@ -91,6 +91,12 @@ namespace DshNotify
     {
         public static float S = 1f;
         public static int D(int v) { return (int)Math.Round(v * S); }
+
+        public static Font F(string name, float size, FontStyle st)
+        {
+            try { return new Font(name, size * S, st); }
+            catch { return new Font("Microsoft YaHei UI", size * S, st); }
+        }
         public static float D(float v) { return v * S; }
     }
 
@@ -185,6 +191,12 @@ namespace DshNotify
         public static int W = 336, H = 124, AnimIn = 800, AnimOut = 420, Hold = 30000;
         public static int MX = 0, MY = 10, ImgSize = 56;
         public static string Pos = "br", Img = "";
+        public static string FontName = "Microsoft YaHei UI";
+        public static float TitleSize = 11.5f;
+        public static float SubSize = 9f;
+        public static string Align = "left";
+        public static string ImgPos = "left";
+
         public static string DirPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "dsh-notify");
         public static string FilePath = System.IO.Path.Combine(DirPath, "config.ini");
 
@@ -234,7 +246,7 @@ namespace DshNotify
                     if (i <= 0) continue;
                     string k = line.Substring(0, i).Trim().ToLower();
                     string v = line.Substring(i + 1).Trim();
-                    int t;
+                    int t; float f2;
                     if (k == "title") Title = v;
                     else if (k == "sub") Sub = v;
                     else if (k == "width" && int.TryParse(v, out t) && t > 120) W = t;
@@ -247,6 +259,11 @@ namespace DshNotify
                     else if (k == "margin_y" && int.TryParse(v, out t)) MY = t;
                     else if (k == "image") Img = v;
                     else if (k == "image_size" && int.TryParse(v, out t)) ImgSize = t;
+                    else if (k == "font" && v.Length > 0) FontName = v;
+                    else if (k == "title_size" && float.TryParse(v, out f2) && f2 > 4f) TitleSize = f2;
+                    else if (k == "sub_size" && float.TryParse(v, out f2) && f2 > 4f) SubSize = f2;
+                    else if (k == "align") Align = v.ToLower();
+                    else if (k == "img_pos") ImgPos = v.ToLower();
                 }
             }
             catch { }
@@ -257,6 +274,7 @@ namespace DshNotify
     {
         Label title, sub;
         Bitmap pic;
+        int imgX = -1, imgY = -1;
         public bool ForceTest;
         Panel close;
         System.Windows.Forms.Timer fade, anim;
@@ -268,7 +286,6 @@ namespace DshNotify
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
-            ShowInTaskbar = false;
             TopMost = true;
             BackColor = Color.White;
             Size = new Size(U.D(Cfg.W), U.D(Cfg.H));
@@ -278,7 +295,7 @@ namespace DshNotify
 
             title = new Label();
             title.Text = "\u2714  请求已完成";
-            title.Font = new Font("Microsoft YaHei UI", U.D(11.5f), FontStyle.Bold);
+            title.Font = U.F(Cfg.FontName, Cfg.TitleSize, FontStyle.Bold);
             title.ForeColor = Color.FromArgb(20, 20, 20);
             title.AutoSize = false;
             title.AutoEllipsis = true;
@@ -288,7 +305,7 @@ namespace DshNotify
 
             sub = new Label();
             sub.Text = "点这里回到 DeepSeek Harness";
-            sub.Font = new Font("Microsoft YaHei UI", U.D(9f));
+            sub.Font = U.F(Cfg.FontName, Cfg.SubSize, FontStyle.Regular);
             sub.ForeColor = Color.FromArgb(120, 120, 120);
             sub.AutoSize = true;
             sub.Location = new Point(U.D(20), U.D(86));
@@ -360,7 +377,9 @@ namespace DshNotify
             if (pic != null)
             {
                 g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                g.DrawImage(pic, U.D(18), (Height - pic.Height) / 2, pic.Width, pic.Height);
+                int dx = imgX >= 0 ? U.D(imgX) : U.D(18);
+                int dy = imgY >= 0 ? U.D(imgY) : (Height - pic.Height) / 2;
+                g.DrawImage(pic, dx, dy, pic.Width, pic.Height);
             }
         }
 
@@ -404,18 +423,47 @@ namespace DshNotify
             }
             catch { pic = null; }
 
-            int pad = U.D(18);
+            title.Font = U.F(Cfg.FontName, Cfg.TitleSize, FontStyle.Bold);
+            sub.Font = U.F(Cfg.FontName, Cfg.SubSize, FontStyle.Regular);
+
+            int pad = U.D(14);
+            int imgS = U.D(Cfg.ImgSize);
+            int gap = U.D(10);
+            string ip = Cfg.ImgPos;
             int textX = pad;
-            int textW = Cfg.W - 56;
-            if (pic != null)
+            int textW = Cfg.W - pad * 2;
+            int titleY = U.D(12);
+            int subY = Cfg.H - U.D(34);
+            imgX = -1; imgY = -1;
+
+            if (pic != null && ip == "left")
             {
-                textX = pad + U.D(Cfg.ImgSize) + U.D(12);
-                textW = Cfg.W - Cfg.ImgSize - 12 - 56;
-                if (textW < 60) textW = 60;
+                imgX = 14; imgY = (Cfg.H - Cfg.ImgSize) / 2;
+                textX = pad + imgS + gap;
+                textW = Cfg.W - textX - pad;
             }
-            title.Location = new Point(textX, U.D(16));
-            title.Size = new Size(U.D(textW), U.D(34));
-            sub.Location = new Point(textX, U.D(86));
+            else if (pic != null && ip == "right")
+            {
+                imgX = Cfg.W - 14 - Cfg.ImgSize; imgY = (Cfg.H - Cfg.ImgSize) / 2;
+                textW = Cfg.W - pad * 2 - imgS - gap;
+            }
+            else if (pic != null && ip == "top")
+            {
+                imgX = (Cfg.W - Cfg.ImgSize) / 2; imgY = 14;
+                titleY = pad + Cfg.ImgSize + U.D(6);
+                subY = titleY + U.D(28);
+                textW = Cfg.W - pad * 2;
+            }
+            if (textW < 50) textW = 50;
+
+            ContentAlignment ca = Cfg.Align == "center" ? ContentAlignment.MiddleCenter
+                                 : (Cfg.Align == "right" ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft);
+            title.TextAlign = ca;
+            sub.TextAlign = ca;
+            title.Location = new Point(textX, titleY);
+            title.Size = new Size(textW, U.D(30));
+            sub.Location = new Point(textX, subY);
+            sub.Size = new Size(textW, U.D(24));
 
             animOut = false;
             if (!Visible)
