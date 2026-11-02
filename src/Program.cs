@@ -10,6 +10,8 @@ namespace DshNotify
 {
     static class Program
     {
+        public static bool TestClosing;
+
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
         [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
         [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
@@ -52,6 +54,7 @@ namespace DshNotify
                 var tctx = new ApplicationContext();
                 var t = new Toast();
                 t.ForceTest = true;
+                TestClosing = true;
                 var once = new System.Windows.Forms.Timer();
                 once.Interval = 80;
                 once.Tick += delegate
@@ -196,6 +199,8 @@ namespace DshNotify
         public static float SubSize = 9f;
         public static string Align = "left";
         public static string ImgPos = "left";
+        public static string ExitFx = "auto";
+        public static int FxMs = 800;
         public static int TextX = -1;
         public static int TextY = -1;
 
@@ -266,11 +271,180 @@ namespace DshNotify
                     else if (k == "sub_size" && float.TryParse(v, out f2) && f2 > 4f) SubSize = f2;
                     else if (k == "align") Align = v.ToLower();
                     else if (k == "img_pos") ImgPos = v.ToLower();
+                    else if (k == "exit_fx") ExitFx = v.ToLower();
+                    else if (k == "fx_ms" && int.TryParse(v, out t)) FxMs = t;
                     else if (k == "text_x" && int.TryParse(v, out t)) TextX = t;
                     else if (k == "text_y" && int.TryParse(v, out t)) TextY = t;
                 }
             }
             catch { }
+        }
+    }
+
+
+    // 灰飞湮灭 / 飞升：基于 UpdateLayeredWindow 的逐像素粒子特效
+    class Fx : Form
+    {
+        [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
+        [StructLayout(LayoutKind.Sequential)] struct SIZE { public int CX, CY; }
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        struct BLENDFUNC { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize,
+            IntPtr hdcSrc, ref POINT pptSrc, int crKey, ref BLENDFUNC pblend, int dwFlags);
+        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
+        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
+        [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr h);
+        [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
+
+        const int ULW_ALPHA = 2, AC_SRC_ALPHA = 1;
+
+        class Tile
+        {
+            public Bitmap Bmp;
+            public int X, Y;
+            public float Delay, VX, VY;
+        }
+
+        Bitmap src;
+        Tile[] tiles;
+        int pad = 140;
+        int total;
+        float tx, ty;      // 目标原点（相对本窗口）
+        System.Windows.Forms.Timer tm = new System.Windows.Forms.Timer();
+        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+
+        public Fx(Bitmap shot, int durationMs, bool rise)
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.Manual;
+            ShowInTaskbar = false;
+            TopMost = true;
+            src = shot;
+            total = Math.Max(250, durationMs);
+            pad = (int)(140 * U.S);
+            int cols = 16, rows = 6;
+            int cw = Math.Max(1, shot.Width / cols);
+            int ch = Math.Max(1, shot.Height / rows);
+            var rnd = new Random(7);
+            tiles = new Tile[cols * rows];
+            int idx = 0;
+            for (int y = 0; y < rows; y++)
+            {
+                for (int x = 0; x < cols; x++)
+                {
+                    int sx = x * cw, sy = y * ch;
+                    int w = (x == cols - 1) ? shot.Width - sx : cw;
+                    int h = (y == rows - 1) ? shot.Height - sy : ch;
+                    if (w <= 0 || h <= 0) continue;
+                    var t = new Tile();
+                    t.Bmp = new Bitmap(w, h);
+                    using (var g = Graphics.FromImage(t.Bmp))
+                        g.DrawImage(shot, new Rectangle(0, 0, w, h), new Rectangle(sx, sy, w, h), GraphicsUnit.Pixel);
+                    t.X = sx; t.Y = sy;
+
+                    if (rise)
+                    {
+                        t.Delay = (float)y / rows * 0.55f;
+                        t.VX = (float)(rnd.NextDouble() * 24 - 12) * U.S;
+                        t.VY = -(float)(70 + rnd.NextDouble() * 90) * U.S;
+                    }
+                    else
+                    {
+                        float cx = x - (cols - 1) / 2f;
+                        float cy = y - (rows - 1) / 2f;
+                        float maxr = (float)Math.Sqrt(((cols - 1) / 2f) * ((cols - 1) / 2f) + ((rows - 1) / 2f) * ((rows - 1) / 2f));
+                        t.Delay = (1f - (float)Math.Sqrt(cx * cx + cy * cy) / maxr) * 0.5f;
+                        float ang = (float)(Math.Atan2(cy, cx) + rnd.NextDouble() * 0.8 - 0.4);
+                        float spd = (float)(40 + rnd.NextDouble() * 90) * U.S;
+                        t.VX = (float)Math.Cos(ang) * spd;
+                        t.VY = (float)Math.Sin(ang) * spd - 20 * U.S;
+                    }
+                    tiles[idx++] = t;
+                }
+            }
+            tm.Interval = 16;
+            tm.Tick += delegate { Frame(); };
+        }
+
+        public void Play(Point loc, int w, int h)
+        {
+            Bounds = new Rectangle(loc.X - pad, loc.Y - pad, w + pad * 2, h + pad * 2);
+            tx = pad; ty = pad;
+            Show();
+            sw.Start();
+            tm.Start();
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= 0x80000; // WS_EX_LAYERED
+                return cp;
+            }
+        }
+
+        void Frame()
+        {
+            int el = (int)sw.ElapsedMilliseconds;
+            var bmp = new Bitmap(Bounds.Width, Bounds.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.Transparent);
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Low;
+                foreach (var t in tiles)
+                {
+                    if (t == null) continue;
+                    float local = (el - t.Delay * total) / (total * (1f - t.Delay));
+                    if (local < 0f) local = 0f;
+                    if (local >= 1f) continue;
+                    float ease = local * local;
+                    float sc = 1f - local * 0.75f;
+                    float a = 1f - local;
+                    int dx = (int)(t.X + tx + t.VX * ease);
+                    int dy = (int)(t.Y + ty + t.VY * ease);
+                    int w = (int)(t.Bmp.Width * sc);
+                    int h = (int)(t.Bmp.Height * sc);
+                    if (w <= 0 || h <= 0) continue;
+                    var cm = new System.Drawing.Imaging.ColorMatrix();
+                    cm.Matrix33 = a;
+                    using (var ia = new System.Drawing.Imaging.ImageAttributes())
+                    {
+                        ia.SetColorMatrix(cm);
+                        g.DrawImage(t.Bmp, new Rectangle(dx, dy, w, h), 0, 0, t.Bmp.Width, t.Bmp.Height, GraphicsUnit.Pixel, ia);
+                    }
+                }
+            }
+            Push(bmp);
+            bmp.Dispose();
+            if (el >= total)
+            {
+                tm.Stop();
+                Close();
+                if (Program.TestClosing) Application.Exit();
+            }
+        }
+
+        void Push(Bitmap bmp)
+        {
+            IntPtr screenDc = GetDC(IntPtr.Zero);
+            IntPtr memDc = CreateCompatibleDC(screenDc);
+            IntPtr hBmp = bmp.GetHbitmap(Color.FromArgb(0));
+            IntPtr old = SelectObject(memDc, hBmp);
+            var size = new SIZE { CX = bmp.Width, CY = bmp.Height };
+            var ptDst = new POINT { X = Bounds.X, Y = Bounds.Y };
+            var ptSrc = new POINT { X = 0, Y = 0 };
+            var blend = new BLENDFUNC { BlendOp = 0, BlendFlags = 0, SourceConstantAlpha = 255, AlphaFormat = AC_SRC_ALPHA };
+            UpdateLayeredWindow(Handle, screenDc, ref ptDst, ref size, memDc, ref ptSrc, 0, ref blend, ULW_ALPHA);
+            SelectObject(memDc, old);
+            DeleteObject(hBmp);
+            DeleteDC(memDc);
+            ReleaseDC(IntPtr.Zero, screenDc);
         }
     }
 
@@ -282,7 +456,7 @@ namespace DshNotify
         public bool ForceTest;
         Panel close;
         System.Windows.Forms.Timer fade, anim;
-        int animFrom, animTo, animT, animDur; bool animOut; int fgTick;
+        int animFrom, animTo, animT, animDur; bool animOut, animVert; int fgTick;
         int life = 0;
 
         public Toast()
@@ -346,7 +520,7 @@ namespace DshNotify
                 float p2 = Math.Min(1f, (float)animT / animDur);
                 float e = 1f - (float)Math.Pow(1f - p2, 3);
                 int x = (int)(animFrom + (animTo - animFrom) * e);
-                Location = new Point(x, Location.Y);
+                if (animVert) Location = new Point(Location.X, x); else Location = new Point(x, Location.Y);
                 if (p2 >= 1f)
                 {
                     anim.Stop();
@@ -508,8 +682,51 @@ namespace DshNotify
         {
             fade.Stop();
             if (!Visible) { Hide(); return; }
+            var wa = Screen.PrimaryScreen.WorkingArea;
+            int dLeft = Location.X - wa.Left;
+            int dRight = wa.Right - (Location.X + Width);
+            int dTop = Location.Y - wa.Top;
+            int dBottom = wa.Bottom - (Location.Y + Height);
+            int near = Math.Min(Math.Min(dLeft, dRight), Math.Min(dTop, dBottom));
+
+            string fx = Cfg.ExitFx;
+            bool slide;
+            if (fx == "slide") slide = true;
+            else if (fx == "dissolve" || fx == "rise") slide = false;
+            else slide = near <= (int)(44 * U.S);
+
+            if (slide)
+            {
+                animOut = true;
+                animT = 0;
+                animDur = Cfg.AnimOut;
+                animVert = (near == dTop || near == dBottom);
+                if (animVert)
+                {
+                    animFrom = Location.Y;
+                    animTo = (near == dTop) ? (wa.Top - Height - 8) : (wa.Bottom + 8);
+                }
+                else
+                {
+                    animFrom = Location.X;
+                    animTo = (near == dLeft) ? (wa.Left - Width - 8) : (wa.Right + 8);
+                }
+                anim.Start();
+                return;
+            }
+
             animOut = true;
-            animFrom = Location.X; animTo = Location.X + Width + 8; animT = 0; animDur = Cfg.AnimOut; anim.Start();
+            try
+            {
+                var shot = new Bitmap(Width, Height);
+                try { DrawToBitmap(shot, new Rectangle(0, 0, Width, Height)); }
+                catch { shot.Dispose(); Hide(); return; }
+                var loc = Location;
+                Hide();
+                var f = new Fx(shot, Cfg.FxMs, fx == "rise");
+                f.Play(loc, Width, Height);
+            }
+            catch { Hide(); if (ForceTest) Application.Exit(); }
         }
     }
 }
