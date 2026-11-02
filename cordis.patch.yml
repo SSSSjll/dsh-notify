@@ -1,4 +1,4 @@
-# dsh-notify 插件层：随 DSH 加载，负责右下角完成提醒框
+# dsh-finish-notify 插件层：随 DSH 加载，负责右下角完成提醒框
 - insert:
-    - id: dsh-notify
-      name: 'dsh-notify'
+    - id: dsh-finish-notify
+      name: 'dsh-finish-notify'
