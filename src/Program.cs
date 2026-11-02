@@ -196,6 +196,8 @@ namespace DshNotify
         public static float SubSize = 9f;
         public static string Align = "left";
         public static string ImgPos = "left";
+        public static int TextX = -1;
+        public static int TextY = -1;
 
         public static string DirPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "dsh-notify");
         public static string FilePath = System.IO.Path.Combine(DirPath, "config.ini");
@@ -264,6 +266,8 @@ namespace DshNotify
                     else if (k == "sub_size" && float.TryParse(v, out f2) && f2 > 4f) SubSize = f2;
                     else if (k == "align") Align = v.ToLower();
                     else if (k == "img_pos") ImgPos = v.ToLower();
+                    else if (k == "text_x" && int.TryParse(v, out t)) TextX = t;
+                    else if (k == "text_y" && int.TryParse(v, out t)) TextY = t;
                 }
             }
             catch { }
@@ -404,8 +408,8 @@ namespace DshNotify
             ClientSize = new Size(U.D(Cfg.W), U.D(Cfg.H));
             title.Text = Cfg.Title;
             sub.Text = Cfg.Sub;
-            bool leftSide = Cfg.Pos.StartsWith("l");
-            bool topSide = Cfg.Pos.EndsWith("t");
+            bool leftSide = Cfg.Pos.Contains("l");
+            bool topSide = Cfg.Pos.Contains("t");
             int tx = leftSide ? wa.Left + U.D(Cfg.MX) : wa.Right - Width - U.D(Cfg.MX);
             int ty = topSide ? wa.Top + U.D(Cfg.MY) : wa.Bottom - Height - U.D(Cfg.MY);
             int hiddenX = leftSide ? wa.Left - Width - 8 : wa.Right + 4;
@@ -453,6 +457,16 @@ namespace DshNotify
                 titleY = pad + Cfg.ImgSize + U.D(6);
                 subY = titleY + U.D(28);
                 textW = Cfg.W - pad * 2;
+            }
+            if (Cfg.TextX >= 0)
+            {
+                textX = Cfg.TextX;
+                textW = Cfg.W - Cfg.TextX - 14;
+            }
+            if (Cfg.TextY >= 0)
+            {
+                titleY = Cfg.TextY;
+                subY = titleY + U.D(30) + (int)(2 * U.S);
             }
             if (textW < 50) textW = 50;
 
