@@ -319,6 +319,7 @@ namespace DshNotify
         }
 
         Bitmap src;
+        public Action Done;
         Tile[] tiles;
         int pad = 140;
         int total;
@@ -435,6 +436,7 @@ namespace DshNotify
             {
                 tm.Stop();
                 Close();
+                if (Done != null) { try { Done(); } catch { } }
                 if (Program.TestClosing) Application.Exit();
             }
         }
@@ -464,6 +466,7 @@ namespace DshNotify
         int imgX = -1, imgY = -1;
         public bool ForceTest;
         public bool AskMode;
+        bool activateAfter;
         Panel close;
         System.Windows.Forms.Timer fade, anim;
         int animFrom, animTo, animT, animDur; bool animOut, animVert; int fgTick;
@@ -516,9 +519,9 @@ namespace DshNotify
             };
             close.Click += delegate { HideToast(); };
 
-            Click += delegate { HideToast(); Program.ActivateDsh(); };
-            title.Click += delegate { HideToast(); Program.ActivateDsh(); };
-            sub.Click += delegate { HideToast(); Program.ActivateDsh(); };
+            Click += delegate { ClickDismiss(); };
+            title.Click += delegate { ClickDismiss(); };
+            sub.Click += delegate { ClickDismiss(); };
 
             Controls.Add(title); Controls.Add(sub); Controls.Add(close);
 
@@ -534,7 +537,12 @@ namespace DshNotify
                 if (p2 >= 1f)
                 {
                     anim.Stop();
-                    if (animOut) { Hide(); if (ForceTest) Application.Exit(); }
+                    if (animOut)
+                    {
+                        Hide();
+                        if (activateAfter) { activateAfter = false; Program.ActivateDsh(); }
+                        if (ForceTest) Application.Exit();
+                    }
                 }
             };
 
@@ -581,6 +589,12 @@ namespace DshNotify
             p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
             p.CloseFigure();
             return p;
+        }
+
+        public void ClickDismiss()
+        {
+            activateAfter = true;
+            HideToast();
         }
 
         public void ShowToast()
@@ -752,6 +766,10 @@ namespace DshNotify
                 var loc = Location;
                 Hide();
                 var f = new Fx(shot, Cfg.FxMs, fx == "rise");
+                f.Done = delegate
+                {
+                    if (activateAfter) { activateAfter = false; Program.ActivateDsh(); }
+                };
                 f.Play(loc, Width, Height);
             }
             catch { Hide(); if (ForceTest) Application.Exit(); }
