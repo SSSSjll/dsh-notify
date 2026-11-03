@@ -43,17 +43,19 @@ namespace DshNotify
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            bool testMode = false;
+            bool testMode = false, showOnce = false, noWatch = false;
             foreach (string a in Environment.GetCommandLineArgs())
             {
                 if (a == "--test") testMode = true;
+                else if (a == "--show") showOnce = true;
+                else if (a == "--no-watch") noWatch = true;
             }
-            if (testMode)
+            if (testMode || showOnce)
             {
-                Cfg.MarkTest();
+                if (testMode) Cfg.MarkTest();
                 var tctx = new ApplicationContext();
                 var t = new Toast();
-                t.ForceTest = true;
+                t.ForceTest = testMode;
                 TestClosing = true;
                 var once = new System.Windows.Forms.Timer();
                 once.Interval = 80;
@@ -70,7 +72,7 @@ namespace DshNotify
 
             using (var ctx = new Ctx())
             {
-                ctx.Start();
+                ctx.Start(noWatch);
                 Application.Run(ctx);
             }
         }
@@ -134,8 +136,9 @@ namespace DshNotify
             tray.DoubleClick += delegate { Program.ActivateDsh(); };
         }
 
-        public void Start()
+        public void Start(bool noWatch)
         {
+            if (noWatch) return;
             string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "sessions");
             if (Directory.Exists(root))
             {
@@ -326,7 +329,7 @@ namespace DshNotify
             src = shot;
             total = Math.Max(250, durationMs);
             pad = (int)(140 * U.S);
-            int cols = 16, rows = 6;
+            int cols = 30, rows = 13;
             int cw = Math.Max(1, shot.Width / cols);
             int ch = Math.Max(1, shot.Height / rows);
             var rnd = new Random(7);
@@ -348,18 +351,18 @@ namespace DshNotify
 
                     if (rise)
                     {
-                        t.Delay = (float)y / rows * 0.55f;
-                        t.VX = (float)(rnd.NextDouble() * 24 - 12) * U.S;
-                        t.VY = -(float)(70 + rnd.NextDouble() * 90) * U.S;
+                        t.Delay = (float)y / rows * 0.45f;
+                        t.VX = (float)(rnd.NextDouble() * 44 - 22) * U.S;
+                        t.VY = -(float)(160 + rnd.NextDouble() * 220) * U.S;
                     }
                     else
                     {
                         float cx = x - (cols - 1) / 2f;
                         float cy = y - (rows - 1) / 2f;
                         float maxr = (float)Math.Sqrt(((cols - 1) / 2f) * ((cols - 1) / 2f) + ((rows - 1) / 2f) * ((rows - 1) / 2f));
-                        t.Delay = (1f - (float)Math.Sqrt(cx * cx + cy * cy) / maxr) * 0.5f;
+                        t.Delay = (1f - (float)Math.Sqrt(cx * cx + cy * cy) / maxr) * 0.45f;
                         float ang = (float)(Math.Atan2(cy, cx) + rnd.NextDouble() * 0.8 - 0.4);
-                        float spd = (float)(40 + rnd.NextDouble() * 90) * U.S;
+                        float spd = (float)(80 + rnd.NextDouble() * 150) * U.S;
                         t.VX = (float)Math.Cos(ang) * spd;
                         t.VY = (float)Math.Sin(ang) * spd - 20 * U.S;
                     }
@@ -687,7 +690,25 @@ namespace DshNotify
             int dRight = wa.Right - (Location.X + Width);
             int dTop = Location.Y - wa.Top;
             int dBottom = wa.Bottom - (Location.Y + Height);
-            int near = Math.Min(Math.Min(dLeft, dRight), Math.Min(dTop, dBottom));
+            // 角落时逐边比较，取最近的一边；距离相同则优先按 pos 指定的方向
+            int near = dLeft; string side = "l";
+            if (dRight < near) { near = dRight; side = "r"; }
+            if (dTop < near) { near = dTop; side = "t"; }
+            if (dBottom < near) { near = dBottom; side = "b"; }
+            string ps = Cfg.Pos;
+            if (dLeft == near && ps.Contains("l")) side = "l";
+            if (dRight == near && ps.Contains("r")) side = "r";
+            if (dTop == near && ps.Contains("t")) side = "t";
+            if (dBottom == near && ps.Contains("b")) side = "b";
+
+            try
+            {
+                string lg2 = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-notify.log");
+                System.IO.File.AppendAllText(lg2, string.Format(
+                    "{0:HH:mm:ss} exit side={1} near={2} d=({3},{4},{5},{6}) pos={7}\r\n",
+                    DateTime.Now, side, near, dLeft, dRight, dTop, dBottom, ps));
+            }
+            catch { }
 
             string fx = Cfg.ExitFx;
             bool slide;
@@ -700,16 +721,16 @@ namespace DshNotify
                 animOut = true;
                 animT = 0;
                 animDur = Cfg.AnimOut;
-                animVert = (near == dTop || near == dBottom);
+                animVert = (side == "t" || side == "b");
                 if (animVert)
                 {
                     animFrom = Location.Y;
-                    animTo = (near == dTop) ? (wa.Top - Height - 8) : (wa.Bottom + 8);
+                    animTo = (side == "t") ? (wa.Top - Height - 8) : (wa.Bottom + 8);
                 }
                 else
                 {
                     animFrom = Location.X;
-                    animTo = (near == dLeft) ? (wa.Left - Width - 8) : (wa.Right + 8);
+                    animTo = (side == "l") ? (wa.Left - Width - 8) : (wa.Right + 8);
                 }
                 anim.Start();
                 return;
