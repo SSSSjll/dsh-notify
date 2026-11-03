@@ -389,12 +389,18 @@ namespace DshNotify
             tm.Start();
         }
 
+        protected override bool ShowWithoutActivation
+        {
+            get { return true; }
+        }
+
         protected override CreateParams CreateParams
         {
             get
             {
                 var cp = base.CreateParams;
-                cp.ExStyle |= 0x80000; // WS_EX_LAYERED
+                cp.ExStyle |= 0x80000;   // WS_EX_LAYERED
+                cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
                 return cp;
             }
         }
@@ -593,7 +599,8 @@ namespace DshNotify
 
         public void ClickDismiss()
         {
-            activateAfter = true;
+            activateAfter = false;
+            Program.ActivateDsh();
             HideToast();
         }
 
