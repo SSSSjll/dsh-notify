@@ -43,12 +43,13 @@ namespace DshNotify
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            bool testMode = false, showOnce = false, noWatch = false;
+            bool testMode = false, showOnce = false, noWatch = false, askMode = false;
             foreach (string a in Environment.GetCommandLineArgs())
             {
                 if (a == "--test") testMode = true;
                 else if (a == "--show") showOnce = true;
                 else if (a == "--no-watch") noWatch = true;
+                else if (a == "--ask") askMode = true;
             }
             if (testMode || showOnce)
             {
@@ -56,6 +57,7 @@ namespace DshNotify
                 var tctx = new ApplicationContext();
                 var t = new Toast();
                 t.ForceTest = testMode;
+                t.AskMode = askMode;
                 TestClosing = true;
                 var once = new System.Windows.Forms.Timer();
                 once.Interval = 80;
@@ -194,6 +196,8 @@ namespace DshNotify
     {
         public static string Title = "\u2714  \u8bf7\u6c42\u5df2\u5b8c\u6210";
         public static string Sub = "\u70b9\u8fd9\u91cc\u56de\u5230 DeepSeek Harness";
+        public static string TitleAsk = "\u2753  \u9700\u8981\u4f60\u9009\u62e9";
+        public static string SubAsk = "\u70b9\u8fd9\u91cc\u56de\u53bb\u56de\u7b54";
         public static int W = 336, H = 124, AnimIn = 800, AnimOut = 420, Hold = 30000;
         public static int MX = 0, MY = 10, ImgSize = 56;
         public static string Pos = "br", Img = "";
@@ -259,6 +263,8 @@ namespace DshNotify
                     int t; float f2;
                     if (k == "title") Title = v;
                     else if (k == "sub") Sub = v;
+                    else if (k == "title_ask") TitleAsk = v;
+                    else if (k == "sub_ask") SubAsk = v;
                     else if (k == "width" && int.TryParse(v, out t) && t > 120) W = t;
                     else if (k == "height" && int.TryParse(v, out t) && t > 60) H = t;
                     else if (k == "anim_in" && int.TryParse(v, out t)) AnimIn = t;
@@ -457,6 +463,7 @@ namespace DshNotify
         Bitmap pic;
         int imgX = -1, imgY = -1;
         public bool ForceTest;
+        public bool AskMode;
         Panel close;
         System.Windows.Forms.Timer fade, anim;
         int animFrom, animTo, animT, animDur; bool animOut, animVert; int fgTick;
@@ -583,8 +590,8 @@ namespace DshNotify
             ClientSize = new Size(U.D(Cfg.W), U.D(Cfg.H));
             Cfg.Load();
             ClientSize = new Size(U.D(Cfg.W), U.D(Cfg.H));
-            title.Text = Cfg.Title;
-            sub.Text = Cfg.Sub;
+            title.Text = AskMode ? Cfg.TitleAsk : Cfg.Title;
+            sub.Text = AskMode ? Cfg.SubAsk : Cfg.Sub;
             bool leftSide = Cfg.Pos.Contains("l");
             bool topSide = Cfg.Pos.Contains("t");
             int tx = leftSide ? wa.Left + U.D(Cfg.MX) : wa.Right - Width - U.D(Cfg.MX);
