@@ -155,7 +155,7 @@ namespace DshNotify
 
         public static void Log(string m)
         {
-            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "dshnotify.log"), DateTime.Now.ToString("HH:mm:ss") + " " + m + "\r\n"); } catch { }
+            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "dshnotify.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " " + m + "\r\n"); } catch { }
         }
 
         public static string LastSession = "";
@@ -313,19 +313,20 @@ namespace DshNotify
 
         class Tile
         {
-            public Bitmap Bmp;
-            public int X, Y;
+            public int SX, SY, W, H;
             public float Delay, VX, VY;
         }
 
         Bitmap src;
-        public Action Done;
         Tile[] tiles;
-        int pad = 140;
-        int total;
-        float tx, ty;      // 目标原点（相对本窗口）
+        int pad, total;
+        float tx, ty;
         System.Windows.Forms.Timer tm = new System.Windows.Forms.Timer();
         System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        public Action Done;
+        Bitmap canvas;
+        System.Drawing.Imaging.ImageAttributes ia = new System.Drawing.Imaging.ImageAttributes();
+        System.Drawing.Imaging.ColorMatrix cm = new System.Drawing.Imaging.ColorMatrix();
 
         public Fx(Bitmap shot, int durationMs, bool rise)
         {
@@ -351,11 +352,7 @@ namespace DshNotify
                     int h = (y == rows - 1) ? shot.Height - sy : ch;
                     if (w <= 0 || h <= 0) continue;
                     var t = new Tile();
-                    t.Bmp = new Bitmap(w, h);
-                    using (var g = Graphics.FromImage(t.Bmp))
-                        g.DrawImage(shot, new Rectangle(0, 0, w, h), new Rectangle(sx, sy, w, h), GraphicsUnit.Pixel);
-                    t.X = sx; t.Y = sy;
-
+                    t.SX = sx; t.SY = sy; t.W = w; t.H = h;
                     if (rise)
                     {
                         t.Delay = (float)y / rows * 0.45f;
@@ -384,7 +381,10 @@ namespace DshNotify
         {
             Bounds = new Rectangle(loc.X - pad, loc.Y - pad, w + pad * 2, h + pad * 2);
             tx = pad; ty = pad;
-            Show();
+            CreateHandle();   // 只建句柄，先不显示
+            Frame();          // 把首帧推进分层窗口
+            Show();           // 显形时已经有内容，不会闪
+            Ctx.Log("fx first frame");
             sw.Start();
             tm.Start();
         }
@@ -399,7 +399,7 @@ namespace DshNotify
             get
             {
                 var cp = base.CreateParams;
-                cp.ExStyle |= 0x80000;   // WS_EX_LAYERED
+                cp.ExStyle |= 0x80000;    // WS_EX_LAYERED
                 cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
                 return cp;
             }
@@ -407,11 +407,23 @@ namespace DshNotify
 
         void Frame()
         {
+            int w = Bounds.Width, h = Bounds.Height;
+            if (canvas == null || canvas.Width != w || canvas.Height != h)
+            {
+                if (canvas != null) canvas.Dispose();
+                canvas = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            }
             int el = (int)sw.ElapsedMilliseconds;
-            var bmp = new Bitmap(Bounds.Width, Bounds.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(bmp))
+            using (var g = Graphics.FromImage(canvas))
             {
                 g.Clear(Color.Transparent);
+                if (el == 0)
+                {
+                    // 首帧：整块直接贴过去，省掉 390 次分块绘制
+                    g.DrawImage(src, tx, ty, src.Width, src.Height);
+                    Push(canvas);
+                    return;
+                }
                 g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Low;
                 foreach (var t in tiles)
                 {
@@ -421,26 +433,21 @@ namespace DshNotify
                     if (local >= 1f) continue;
                     float ease = local * local;
                     float sc = 1f - local * 0.75f;
-                    float a = 1f - local;
-                    int dx = (int)(t.X + tx + t.VX * ease);
-                    int dy = (int)(t.Y + ty + t.VY * ease);
-                    int w = (int)(t.Bmp.Width * sc);
-                    int h = (int)(t.Bmp.Height * sc);
-                    if (w <= 0 || h <= 0) continue;
-                    var cm = new System.Drawing.Imaging.ColorMatrix();
-                    cm.Matrix33 = a;
-                    using (var ia = new System.Drawing.Imaging.ImageAttributes())
-                    {
-                        ia.SetColorMatrix(cm);
-                        g.DrawImage(t.Bmp, new Rectangle(dx, dy, w, h), 0, 0, t.Bmp.Width, t.Bmp.Height, GraphicsUnit.Pixel, ia);
-                    }
+                    int dx = (int)(t.SX + tx + t.VX * ease);
+                    int dy = (int)(t.SY + ty + t.VY * ease);
+                    int dw = (int)(t.W * sc);
+                    int dh = (int)(t.H * sc);
+                    if (dw <= 0 || dh <= 0) continue;
+                    cm.Matrix33 = 1f - local;
+                    ia.SetColorMatrix(cm);
+                    g.DrawImage(src, new Rectangle(dx, dy, dw, dh), t.SX, t.SY, t.W, t.H, GraphicsUnit.Pixel, ia);
                 }
             }
-            Push(bmp);
-            bmp.Dispose();
+            Push(canvas);
             if (el >= total)
             {
                 tm.Stop();
+                try { if (src != null) { src.Dispose(); src = null; } } catch { }
                 Close();
                 if (Done != null) { try { Done(); } catch { } }
                 if (Program.TestClosing) Application.Exit();
@@ -469,6 +476,7 @@ namespace DshNotify
     {
         Label title, sub;
         Bitmap pic;
+        Bitmap cachedShot;
         int imgX = -1, imgY = -1;
         public bool ForceTest;
         public bool AskMode;
@@ -599,9 +607,30 @@ namespace DshNotify
 
         public void ClickDismiss()
         {
+            Ctx.Log("click");
             activateAfter = false;
-            Program.ActivateDsh();
             HideToast();
+            var one = new System.Windows.Forms.Timer();
+            one.Interval = 40;
+            one.Tick += delegate
+            {
+                one.Stop();
+                one.Dispose();
+                Program.ActivateDsh();
+            };
+            one.Start();
+        }
+
+        void CacheShot()
+        {
+            try
+            {
+                if (cachedShot != null) { cachedShot.Dispose(); cachedShot = null; }
+                var b = new Bitmap(Width, Height);
+                DrawToBitmap(b, new Rectangle(0, 0, Width, Height));
+                cachedShot = b;
+            }
+            catch { }
         }
 
         public void ShowToast()
@@ -698,6 +727,10 @@ namespace DshNotify
             life = 0;
             fgTick = 0;
             TopMost = true;
+            var snap = new System.Windows.Forms.Timer();
+            snap.Interval = Math.Max(200, Cfg.AnimIn + 120);
+            snap.Tick += delegate { snap.Stop(); snap.Dispose(); CacheShot(); };
+            snap.Start();
             try
             {
                 string lg = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-notify.log");
@@ -738,6 +771,7 @@ namespace DshNotify
             }
             catch { }
 
+            Ctx.Log("hide begin");
             string fx = Cfg.ExitFx;
             bool slide;
             if (fx == "slide") slide = true;
@@ -767,17 +801,23 @@ namespace DshNotify
             animOut = true;
             try
             {
-                var shot = new Bitmap(Width, Height);
-                try { DrawToBitmap(shot, new Rectangle(0, 0, Width, Height)); }
-                catch { shot.Dispose(); Hide(); return; }
+                Bitmap shot = cachedShot;
+                cachedShot = null;
+                if (shot == null)
+                {
+                    shot = new Bitmap(Width, Height);
+                    try { DrawToBitmap(shot, new Rectangle(0, 0, Width, Height)); }
+                    catch { shot.Dispose(); Hide(); return; }
+                }
                 var loc = Location;
-                Hide();
                 var f = new Fx(shot, Cfg.FxMs, fx == "rise");
                 f.Done = delegate
                 {
                     if (activateAfter) { activateAfter = false; Program.ActivateDsh(); }
                 };
                 f.Play(loc, Width, Height);
+                Hide();           // 特效层已就位且内容一致，此处切换不可见
+                Ctx.Log("toast hidden");
             }
             catch { Hide(); if (ForceTest) Application.Exit(); }
         }
