@@ -68,3 +68,26 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /target:winexe
 ## License
 
 MIT
+## 退场特效
+
+| `exit_fx` | 表现 |
+|---|---|
+| `auto` | 靠近屏幕边缘 → 滑出；否则走粒子特效 |
+| `slide` | 直接滑出屏幕外 |
+| `dissolve` | 灰飞烟灭：从点击位置起波前，方块逐块化灰、飞散、缩小、淡出 |
+| `rise` | 飞升：屏幕顶部垂下光柱，弹窗被压扁 → 拉成竖条 → 被吸走 |
+| `collapse` | 倒塌：几道裂纹 → 颤动 → 左右两片下坠，伴随细灰 |
+| `hand` | 恶魔手：巨手从洞口升起，攥碎弹窗，碎片从手心向外溃散 |
+
+点右上角 ✕ 关闭时，碎裂从 ✕ 的位置开始；点卡片其它位置则从点击处开始。
+
+## 关于《以撒》素材
+
+`rise` 的光柱与 `hand` 的恶魔爪原型取自《The Binding of Isaac: Rebirth》的解包资源，版权归 Edmund McMillen / Nicalis 所有，**不在本仓库中**。
+
+仓库里的 `assets/dsh-notify.exe` 是不含这些素材的干净构建，缺素材时自动降级：
+
+- `rise`：保留压扁 + 拉长吸走的动作，只是没有光柱
+- `hand`：保留手心起碎 + 溃散，只是没有那只手
+
+想在本机补全，需要自备游戏资源并按 `/resource:hand_strip.png,dsh-notify.hand_strip.png /resource:beam.png,dsh-notify.beam.png` 重新编译。
