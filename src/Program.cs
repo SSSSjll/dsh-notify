@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
@@ -229,6 +229,13 @@ namespace DshNotify
         public static string Align = "left";
         public static string ImgPos = "left";
         public static string ExitFx = "auto";
+        // 所有消失特效的唯一清单。以后新增特效只在这里加一项即可：
+        // exit_fx=random 会自动把它算进随机池，每种特效概率相同。
+        public static readonly string[] FxAll = { "slide", "dissolve", "rise", "collapse", "hand", "wave" };
+        public static int Shatter = 1;      // 被动：拍地插件在跑就自动生效
+        public static int ShardPct = 50;    // 停留到自动关闭时间的百分之多少开始掷骰子
+        public static int ShardP0 = 10;     // 到点时的出现概率 %
+        public static int ShardStep = 5;    // 每多等 1 秒，概率增加多少 %
         public static int FxMs = 800;
         public static int TextX = -1;
         public static int TextY = -1;
@@ -263,7 +270,15 @@ namespace DshNotify
                     + "title=\u2714  \u8bf7\u6c42\u5df2\u5b8c\u6210\r\n"
                     + "sub=\u70b9\u8fd9\u91cc\u56de\u5230 DeepSeek Harness\r\n"
                     + "width=336\r\nheight=124\r\nanim_in=800\r\nanim_out=420\r\nhold_ms=30000\r\n"
-                    + "pos=br\r\nmargin_x=0\r\nmargin_y=10\r\nimage=\r\nimage_size=56\r\n";
+                    + "pos=br\r\nmargin_x=0\r\nmargin_y=10\r\nimage=\r\nimage_size=56\r\n"
+                    + "# \u6d88\u5931\u7279\u6548\uff1aslide / dissolve / rise / collapse / hand / wave\uff0c"
+                    + "random=\u6bcf\u79cd\u7b49\u6982\u7387\u968f\u673a\u4e00\u79cd\uff08\u65b0\u7279\u6548\u81ea\u52a8\u8fdb\u6c60\uff09\u3002"
+                    + "auto=\u8ddf\u636e\u79bb\u5c4f\u5e55\u8fb9\u7684\u8ddd\u79bb\u81ea\u52a8\u9009\r\n"
+                    + "exit_fx=random\r\n"
+                    + "# \u6d88\u5931\u52a8\u753b\u65f6\u957f\uff08\u6beb\u79d2\uff09\uff0c\u6240\u6709\u6d88\u5931\u7279\u6548\u90fd\u8ddf\u5b83\u8d70\r\n"
+                    + "fx_ms=800\r\n"
+                    + "# \u62cd\u5730\u63d2\u4ef6\u5728\u8dd1\u65f6\uff0c\u5f39\u7a97\u505c\u7559\u5230\u4e00\u5b9a\u65f6\u95f4\u540e\u4f1a\u88ab\u62cd\u788e\uff08\u4e0d\u8df3\u8f6c\uff09\r\n"
+                    + "shatter=1\r\nshatter_pct=50\r\nshatter_p0=10\r\nshatter_step=5\r\n";
                 File.WriteAllText(FilePath, def);
             }
             catch { }
@@ -303,6 +318,10 @@ namespace DshNotify
                     else if (k == "align") Align = v.ToLower();
                     else if (k == "img_pos") ImgPos = v.ToLower();
                     else if (k == "exit_fx") ExitFx = v.ToLower();
+            else if (k == "shatter") Shatter = (v == "1" || v == "true") ? 1 : 0;
+            else if (k == "shatter_pct") { int sv; if (int.TryParse(v, out sv)) ShardPct = Math.Max(0, Math.Min(95, sv)); }
+            else if (k == "shatter_p0") { int sv; if (int.TryParse(v, out sv)) ShardP0 = Math.Max(0, Math.Min(100, sv)); }
+            else if (k == "shatter_step") { int sv; if (int.TryParse(v, out sv)) ShardStep = Math.Max(0, Math.Min(100, sv)); }
                     else if (k == "fx_ms" && int.TryParse(v, out t)) FxMs = t;
                     else if (k == "text_x" && int.TryParse(v, out t)) TextX = t;
                     else if (k == "text_y" && int.TryParse(v, out t)) TextY = t;
@@ -1482,6 +1501,26 @@ namespace DshNotify
             fade.Tick += delegate
             {
                 life += 30;
+                // 被动拍碎：越过阈值后每秒掷一次骰，概率逐秒累加
+                if (Cfg.Shatter == 1 && !autoShard && Cfg.Hold > 0 && Cfg.ShardPct > 0)
+                {
+                    int due = Cfg.Hold * Cfg.ShardPct / 100;
+                    if (life >= due)
+                    {
+                        int sec = (life - due) / 1000;
+                        if (sec != shardSec)
+                        {
+                            shardSec = sec;
+                            int pb = Cfg.ShardP0 + sec * Cfg.ShardStep;
+                            if (pb >= 100 || rndShard.Next(100) < pb)
+                            {
+                                autoShard = true;
+                                HideToast();
+                                return;
+                            }
+                        }
+                    }
+                }
                 if (life > Cfg.Hold) { HideToast(); return; }
                 fgTick += 30;
                 if (fgTick >= 500)
@@ -1674,6 +1713,39 @@ namespace DshNotify
             fade.Start();
         }
 
+        bool autoShard;
+        int shardSec = -1;
+        Random rndShard = new Random();
+        Random rndFx = new Random();
+
+        // 把消失交给拍地插件：把窗口矩形发过去，让冲击波把它打碎
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string cls, string win);
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr wp, ref COPYDATASTRUCT lp);
+        [StructLayout(LayoutKind.Sequential)] struct COPYDATASTRUCT { public IntPtr dwData; public int cbData; public IntPtr lpData; }
+
+        bool HandOffToSlap()
+        {
+            try
+            {
+                IntPtr sink = FindWindow(null, "slap_fx_sink");
+                Ctx.Log("sink=" + sink.ToInt64());
+                if (sink == IntPtr.Zero) return false;
+                int[] d = new int[] { Handle.ToInt32(), Left, Top, Left + Width, Top + Height, Cfg.FxMs };
+                GCHandle g = GCHandle.Alloc(d, GCHandleType.Pinned);
+                try
+                {
+                    COPYDATASTRUCT cds = new COPYDATASTRUCT();
+                    cds.dwData = (IntPtr)0x5AAB;
+                    cds.cbData = d.Length * 4;
+                    cds.lpData = g.AddrOfPinnedObject();
+                    SendMessage(sink, 0x004A, Handle, ref cds);
+                }
+                finally { g.Free(); }
+                return true;
+            }
+            catch { return false; }
+        }
+
         void HideToast()
         {
             fade.Stop();
@@ -1703,12 +1775,36 @@ namespace DshNotify
             }
             catch { }
 
-            Ctx.Log("hide begin");
+            Ctx.Log("hide begin fx=" + Cfg.ExitFx + " vis=" + Visible);
             string fx = Cfg.ExitFx;
+            // 随机消失：从统一清单里等概率抽一个（新特效只要加进 FxAll 就自动参与）
+            if (fx == "random")
+            {
+                fx = Cfg.FxAll[rndFx.Next(Cfg.FxAll.Length)];
+                Ctx.Log("random -> " + fx);
+            }
+
+            // 新特效：交给拍地插件，用冲击波把它击碎（点 X 仍然会正常跳转）
+            if ((fx == "wave" || autoShard) && HandOffToSlap())
+            {
+                animOut = true;
+                Ctx.Log("handoff wave");
+                System.Windows.Forms.Timer wt = new System.Windows.Forms.Timer();
+                wt.Interval = 140;
+                wt.Tick += delegate
+                {
+                    wt.Stop(); wt.Dispose();
+                    Hide();
+                    Ctx.Log("toast hidden");
+                    if (activateAfter) { activateAfter = false; Program.ActivateDsh(); }
+                };
+                wt.Start();
+                return;
+            }
             bool slide;
             if (fx == "slide") slide = true;
-            else if (fx == "dissolve" || fx == "rise") slide = false;
-            else slide = near <= (int)(44 * U.S);
+            else if (fx == "auto") slide = near <= (int)(44 * U.S);
+            else slide = false;      // 点名指定了特效就按它自己的动画走，不再被边缘距离影响
 
             if (slide)
             {
