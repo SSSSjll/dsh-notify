@@ -90,4 +90,4 @@ MIT
 - `rise`：保留压扁 + 拉长吸走的动作，只是没有光柱
 - `hand`：保留手心起碎 + 溃散，只是没有那只手
 
-想在本机补全，需要自备游戏资源并按 `/resource:hand_strip.png,dsh-notify.hand_strip.png /resource:beam.png,dsh-notify.beam.png` 重新编译。
+本仓库不包含、也不提供获取游戏美术资源的功能。

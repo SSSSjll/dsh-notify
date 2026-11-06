@@ -1124,19 +1124,18 @@ namespace DshNotify
         {
             try
             {
-                var asm = Assembly.GetExecutingAssembly();
-                using (Stream st = asm.GetManifestResourceStream("dsh-notify.beam.png"))
+                string how;
+                Bitmap bmp = LoadAssetBitmap("beam.png", "dsh-notify.beam.png", out how);
+                if (bmp == null) { Ctx.Log("beam none"); return; }
+                using (bmp)
                 {
-                    if (st == null) { Ctx.Log("beam strip missing"); return; }
-                    using (Bitmap bmp = new Bitmap(st))
-                    {
-                        beamW = bmp.Width; beamH = bmp.Height;
-                        var bd = bmp.LockBits(new Rectangle(0, 0, beamW, beamH), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                        beamPx = new int[beamW * beamH];
-                        Marshal.Copy(bd.Scan0, beamPx, 0, beamPx.Length);
-                        bmp.UnlockBits(bd);
-                    }
+                    beamW = bmp.Width; beamH = bmp.Height;
+                    var bd = bmp.LockBits(new Rectangle(0, 0, beamW, beamH), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                    beamPx = new int[beamW * beamH];
+                    Marshal.Copy(bd.Scan0, beamPx, 0, beamPx.Length);
+                    bmp.UnlockBits(bd);
                 }
+                Ctx.Log("beam " + how);
             }
             catch (Exception ex) { Ctx.Log("beam load fail " + ex.Message); }
         }
@@ -1184,24 +1183,64 @@ namespace DshNotify
             }
         }
 
+        // 先找本机同名素材文件，找不到再用内嵌资源
+        static string FindLocalAsset(string name)
+        {
+            string[] dirs = new string[]
+            {
+                AppDomain.CurrentDomain.BaseDirectory,
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".."),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "dsh-notify", "assets"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "dsh-notify", "assets"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "dsh-notify", "assets")
+            };
+            for (int i = 0; i < dirs.Length; i++)
+            {
+                try
+                {
+                    string cand = Path.Combine(Path.GetFullPath(dirs[i]), name);
+                    if (File.Exists(cand)) return cand;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        static Bitmap LoadAssetBitmap(string name, string resName, out string how)
+        {
+            how = "none";
+            string local = FindLocalAsset(name);
+            if (local != null)
+            {
+                try { Bitmap b = new Bitmap(local); how = "local"; return b; }
+                catch { }
+            }
+            try
+            {
+                Stream st = Assembly.GetExecutingAssembly().GetManifestResourceStream(resName);
+                if (st != null) { how = "embedded"; return new Bitmap(st); }
+            }
+            catch { }
+            return null;
+        }
+
         void LoadHandStrip()
         {
             try
             {
-                var asm = Assembly.GetExecutingAssembly();
-                using (Stream st = asm.GetManifestResourceStream("dsh-notify.hand_strip.png"))
+                string how;
+                Bitmap bmp = LoadAssetBitmap("hand_strip.png", "dsh-notify.hand_strip.png", out how);
+                if (bmp == null) { Ctx.Log("hand strip none"); return; }
+                using (bmp)
                 {
-                    if (st == null) { Ctx.Log("hand strip missing"); return; }
-                    using (Bitmap bmp = new Bitmap(st))
-                    {
-                        handW = bmp.Width / handN;
-                        handH = bmp.Height;
-                        var bd = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                        handPx = new int[bmp.Width * bmp.Height];
-                        Marshal.Copy(bd.Scan0, handPx, 0, handPx.Length);
-                        bmp.UnlockBits(bd);
-                    }
+                    handW = bmp.Width / handN;
+                    handH = bmp.Height;
+                    var bd = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                    handPx = new int[bmp.Width * bmp.Height];
+                    Marshal.Copy(bd.Scan0, handPx, 0, handPx.Length);
+                    bmp.UnlockBits(bd);
                 }
+                Ctx.Log("hand strip " + how);
             }
             catch (Exception ex) { Ctx.Log("hand load fail " + ex.Message); }
         }
