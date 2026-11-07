@@ -38,6 +38,8 @@ namespace DshNotify
 
         public const string DSH_EXE = @"D:\dsh\DeepSeek Harness.exe";
 
+        static Mutex helperMutex;      // 单实例锁
+
         [STAThread]
         static void Main()
         {
@@ -66,6 +68,15 @@ namespace DshNotify
                 else if (a == "--no-watch") noWatch = true;
                 else if (a == "--ask") askMode = true;
             }
+            // 单实例：DSH 每次重载插件都会 spawn 一个 helper，
+            // 没有这道闸就会越堆越多（实测堆到 18 个）。
+            if (!demoMode && !showOnce && !askMode)
+            {
+                bool createdNew;
+                helperMutex = new Mutex(true, "dsh-notify-helper-single", out createdNew);
+                if (!createdNew) return;
+            }
+
             if (demoMode)
             {
                 Cfg.MarkTest();
