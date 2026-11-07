@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
@@ -101,6 +101,24 @@ namespace DshNotify
                     t.ShowToast();
                 };
                 once.Start();
+                // 弹完就退出：以前 --show 的进程一直挂在消息循环里，
+                // 每弹一次留一个，实测堆到 8 个。
+                bool seenVisible = false;
+                int aliveMs = 0;
+                int capMs = Math.Max(4000, Cfg.Hold + 4000);
+                var wd = new System.Windows.Forms.Timer();
+                wd.Interval = 400;
+                wd.Tick += delegate
+                {
+                    aliveMs += wd.Interval;
+                    if (t.Visible) seenVisible = true;
+                    bool hiddenNow = seenVisible && !t.Visible;
+                    if (!hiddenNow && aliveMs < capMs) return;
+                    wd.Stop();
+                    wd.Dispose();
+                    tctx.ExitThread();
+                };
+                wd.Start();
                 Application.Run(tctx);
                 return;
             }
