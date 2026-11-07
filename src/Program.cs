@@ -70,7 +70,7 @@ namespace DshNotify
             }
             // 单实例：DSH 每次重载插件都会 spawn 一个 helper，
             // 没有这道闸就会越堆越多（实测堆到 18 个）。
-            if (!demoMode && !showOnce && !askMode)
+            if (!demoMode && !showOnce && !askMode && !testMode)
             {
                 bool createdNew;
                 helperMutex = new Mutex(true, "dsh-notify-helper-single", out createdNew);
