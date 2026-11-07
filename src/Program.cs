@@ -103,17 +103,18 @@ namespace DshNotify
                 once.Start();
                 // 弹完就退出：以前 --show 的进程一直挂在消息循环里，
                 // 每弹一次留一个，实测堆到 8 个。
+                Toast.AllDone = false;
                 bool seenVisible = false;
                 int aliveMs = 0;
-                int capMs = Math.Max(4000, Cfg.Hold + 4000);
+                int capMs = (int)(Cfg.Hold + Cfg.FxMs * 3f + 6000);
                 var wd = new System.Windows.Forms.Timer();
-                wd.Interval = 400;
+                wd.Interval = 200;
                 wd.Tick += delegate
                 {
                     aliveMs += wd.Interval;
                     if (t.Visible) seenVisible = true;
-                    bool hiddenNow = seenVisible && !t.Visible;
-                    if (!hiddenNow && aliveMs < capMs) return;
+                    // 必须等消失特效播完（AllDone）再退，否则特效播一半进程就没了
+                    if (!(seenVisible && Toast.AllDone) && aliveMs < capMs) return;
                     wd.Stop();
                     wd.Dispose();
                     tctx.ExitThread();
@@ -260,7 +261,7 @@ namespace DshNotify
         public static string ExitFx = "auto";
         // 所有消失特效的唯一清单。以后新增特效只在这里加一项即可：
         // exit_fx=random 会自动把它算进随机池，每种特效概率相同。
-        public static readonly string[] FxAll = { "slide", "dissolve", "rise", "collapse", "hand", "wave" };
+        public static readonly string[] FxAll = { "slide", "dissolve", "rise", "collapse", "hand" };   // wave 是被动常驻，不进随机池
         public static int Shatter = 1;      // 被动：拍地插件在跑就自动生效
         public static int ShardPct = 50;    // 停留到自动关闭时间的百分之多少开始掷骰子
         public static int ShardP0 = 10;     // 到点时的出现概率 %
@@ -1440,6 +1441,7 @@ namespace DshNotify
         int imgX = -1, imgY = -1;
         public bool ForceTest;
         public bool AskMode;
+        public static bool AllDone;   // 所有动画播完（--test/--show 据此退出）
         bool activateAfter;
         Point clickPt; bool clickPtValid;
         Panel close;
@@ -1520,6 +1522,7 @@ namespace DshNotify
                     {
                         Hide();
                         if (activateAfter) { activateAfter = false; Program.ActivateDsh(); }
+                        AllDone = true;
                         if (ForceTest) Application.Exit();
                     }
                 }
@@ -1825,6 +1828,7 @@ namespace DshNotify
                     wt.Stop(); wt.Dispose();
                     Hide();
                     Ctx.Log("toast hidden");
+                    AllDone = true;
                     if (activateAfter) { activateAfter = false; Program.ActivateDsh(); }
                 };
                 wt.Start();
@@ -1864,7 +1868,7 @@ namespace DshNotify
                 {
                     shot = new Bitmap(Width, Height);
                     try { DrawToBitmap(shot, new Rectangle(0, 0, Width, Height)); }
-                    catch { shot.Dispose(); Hide(); return; }
+                    catch { shot.Dispose(); Hide(); AllDone = true; return; }
                 }
                 var loc = Location;
                 string kind = (fx == "rise" || fx == "collapse" || fx == "hand") ? fx : "dissolve";
@@ -1872,13 +1876,14 @@ namespace DshNotify
                 var f = new Fx(shot, dur, kind, clickPtValid ? clickPt : new Point(Width / 2, Height / 2));
                 f.Done = delegate
                 {
+                    AllDone = true;
                     if (activateAfter) { activateAfter = false; Program.ActivateDsh(); }
                 };
                 f.Play(loc, Width, Height);
                 Hide();           // 特效层已就位且内容一致，此处切换不可见
                 Ctx.Log("toast hidden");
             }
-            catch { Hide(); if (ForceTest) Application.Exit(); }
+            catch { Hide(); AllDone = true; if (ForceTest) Application.Exit(); }
         }
     }
 }
