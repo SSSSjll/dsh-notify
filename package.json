@@ -1,6 +1,6 @@
 {
   "name": "dsh-finish-notify",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "DSH 请求完成后在屏幕角落弹出提醒框，点击回到 DSH",
   "type": "module",
   "main": "lib/index.js",
