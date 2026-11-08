@@ -1443,6 +1443,7 @@ namespace DshNotify
         public bool AskMode;
         public static bool AllDone;   // 所有动画播完（--test/--show 据此退出）
         bool activateAfter;
+        bool autoShard;
         Point clickPt; bool clickPtValid;
         Panel close;
         System.Windows.Forms.Timer fade, anim;
@@ -1533,7 +1534,26 @@ namespace DshNotify
             fade.Tick += delegate
             {
                 life += 30;
-                if (life > Cfg.Hold) { HideToast(); return; }
+                // 被动拍碎：停留过半后按概率递增，只在拍地插件在跑时才触发
+                if (Cfg.Shatter == 1 && !autoShard && Cfg.Hold > 0 && Cfg.ShardPct > 0 && SlapRunning())
+                {
+                    int due = Cfg.Hold * Cfg.ShardPct / 100;
+                    if (life >= due)
+                    {
+                        int sec = (life - due) / 1000;
+                        if (sec != shardSec)
+                        {
+                            shardSec = sec;
+                            int pb = Cfg.ShardP0 + sec * Cfg.ShardStep;
+                            if (pb >= 100 || rndShard.Next(100) < pb)
+                            {
+                                autoShard = true;
+                                HideToast();
+                                return;
+                            }
+                        }
+                    }
+                }                if (life > Cfg.Hold) { HideToast(); return; }
                 fgTick += 30;
                 if (fgTick >= 500)
                 {
@@ -1734,6 +1754,11 @@ namespace DshNotify
         [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr wp, ref COPYDATASTRUCT lp);
         [StructLayout(LayoutKind.Sequential)] struct COPYDATASTRUCT { public IntPtr dwData; public int cbData; public IntPtr lpData; }
 
+        bool SlapRunning()   // 拍地插件没跑时，自动拍碎和冲击波都不参与
+        {
+            try { return FindWindow(null, "slap_fx_sink") != IntPtr.Zero; } catch { return false; }
+        }
+
         bool HandOffToSlap()
         {
             try
@@ -1797,7 +1822,7 @@ namespace DshNotify
 
             // 新特效：交给拍地插件，用冲击波把它击碎（点 X 仍然会正常跳转）
             // 拍碎是底层，永远在场：显式 wave / 中途拍碎走独占，其余特效在有拍地插件时再叠一层
-            if (fx == "wave" && HandOffToSlap())
+            if ((fx == "wave" || autoShard) && HandOffToSlap())
             {
                 animOut = true;
                 Ctx.Log("handoff wave");
