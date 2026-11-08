@@ -1533,26 +1533,6 @@ namespace DshNotify
             fade.Tick += delegate
             {
                 life += 30;
-                // 被动拍碎：越过阈值后每秒掷一次骰，概率逐秒累加
-                if (Cfg.Shatter == 1 && !autoShard && Cfg.Hold > 0 && Cfg.ShardPct > 0)
-                {
-                    int due = Cfg.Hold * Cfg.ShardPct / 100;
-                    if (life >= due)
-                    {
-                        int sec = (life - due) / 1000;
-                        if (sec != shardSec)
-                        {
-                            shardSec = sec;
-                            int pb = Cfg.ShardP0 + sec * Cfg.ShardStep;
-                            if (pb >= 100 || rndShard.Next(100) < pb)
-                            {
-                                autoShard = true;
-                                HideToast();
-                                return;
-                            }
-                        }
-                    }
-                }
                 if (life > Cfg.Hold) { HideToast(); return; }
                 fgTick += 30;
                 if (fgTick >= 500)
@@ -1745,7 +1725,6 @@ namespace DshNotify
             fade.Start();
         }
 
-        bool autoShard;
         int shardSec = -1;
         Random rndShard = new Random();
         Random rndFx = new Random();
@@ -1818,7 +1797,7 @@ namespace DshNotify
 
             // 新特效：交给拍地插件，用冲击波把它击碎（点 X 仍然会正常跳转）
             // 拍碎是底层，永远在场：显式 wave / 中途拍碎走独占，其余特效在有拍地插件时再叠一层
-            if ((fx == "wave" || autoShard) && HandOffToSlap())
+            if (fx == "wave" && HandOffToSlap())
             {
                 animOut = true;
                 Ctx.Log("handoff wave");
@@ -1835,8 +1814,6 @@ namespace DshNotify
                 wt.Start();
                 return;
             }
-            HandOffToSlap();     // 底层拍碎：不管上面选了哪种消失特效，都在（拍地没跑时静默失败）
-
             bool slide;
             if (fx == "slide") slide = true;
             else if (fx == "auto") slide = near <= (int)(44 * U.S);
