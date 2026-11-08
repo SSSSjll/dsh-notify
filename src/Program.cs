@@ -1817,6 +1817,7 @@ namespace DshNotify
             }
 
             // 新特效：交给拍地插件，用冲击波把它击碎（点 X 仍然会正常跳转）
+            // 拍碎是底层，永远在场：显式 wave / 中途拍碎走独占，其余特效在有拍地插件时再叠一层
             if ((fx == "wave" || autoShard) && HandOffToSlap())
             {
                 animOut = true;
@@ -1834,6 +1835,8 @@ namespace DshNotify
                 wt.Start();
                 return;
             }
+            HandOffToSlap();     // 底层拍碎：不管上面选了哪种消失特效，都在（拍地没跑时静默失败）
+
             bool slide;
             if (fx == "slide") slide = true;
             else if (fx == "auto") slide = near <= (int)(44 * U.S);
