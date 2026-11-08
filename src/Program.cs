@@ -347,7 +347,7 @@ namespace DshNotify
                     else if (k == "sub_size" && float.TryParse(v, out f2) && f2 > 4f) SubSize = f2;
                     else if (k == "align") Align = v.ToLower();
                     else if (k == "img_pos") ImgPos = v.ToLower();
-                    else if (k == "exit_fx") ExitFx = v.ToLower();
+                    else if (k == "exit_fx") { ExitFx = v.ToLower(); if (ExitFx == "wave") ExitFx = "auto"; }   // wave 已改为被动常驻，不再是可选项
             else if (k == "shatter") Shatter = (v == "1" || v == "true") ? 1 : 0;
             else if (k == "shatter_pct") { int sv; if (int.TryParse(v, out sv)) ShardPct = Math.Max(0, Math.Min(95, sv)); }
             else if (k == "shatter_p0") { int sv; if (int.TryParse(v, out sv)) ShardP0 = Math.Max(0, Math.Min(100, sv)); }
